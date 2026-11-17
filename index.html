@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AVN EcoPlates Dashboard</title>
+  <!-- AVN EcoPlates: loads React, Recharts, lucide-react & Tailwind from CDNs and
+       compiles AVNEcoPlatesDashboard.jsx in the browser. Serve this folder over HTTP
+       (GitHub Pages works as-is). Keep this file next to AVNEcoPlatesDashboard.jsx. -->
+  <script src="https://cdn.tailwindcss.com/3.4.5"></script>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+  <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+  <script>window.react = window.React; /* lucide UMD reads a lowercase global */</script>
+  <script src="https://unpkg.com/lucide-react@0.383.0/dist/umd/lucide-react.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+  <style>body { background: #f8fafc; margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }</style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    const GLOBALS = { react: 'React', recharts: 'Recharts', 'lucide-react': 'LucideReact', '@supabase/supabase-js': 'supabase' };
+    fetch('./AVNEcoPlatesDashboard.jsx', { cache: 'no-cache' }).then((r) => r.text()).then((src) => {
+      const code = src
+        .replace(/import\s+React\s*,\s*\{([\s\S]*?)\}\s*from\s*['"]react['"];?/g, 'const {$1} = React;')
+        .replace(/import\s*\{([\s\S]*?)\}\s*from\s*['"]([^'"]+)['"];?/g, (_, names, mod) => `const {${names}} = window.${GLOBALS[mod]};`)
+        .replace('export default function', 'function');
+      const out = Babel.transform(code + '\nReactDOM.createRoot(document.getElementById("root")).render(React.createElement(AVNEcoPlatesDashboard));', { presets: ['react'] }).code;
+      new Function(out)();
+    }).catch((e) => { document.getElementById('root').textContent = 'Preview failed: ' + e.message; console.error(e); });
+  </script>
+</body>
+</html>
