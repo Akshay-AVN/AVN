@@ -609,13 +609,13 @@ function PriceInputs({ qty, unitPrice, onQty, onUnit, unitLabel, errors = {} }) 
   return (
     <>
       <Field label={`Quantity (${unitLabel})`} error={errors.qty}>
-        <input type="number" min="0" step="1" inputMode="numeric" className={inputCls} value={qty} onChange={(e) => onQty(e.target.value)} placeholder="e.g. 300000" />
+        <input type="number" min="0" step="any" inputMode="numeric" className={inputCls} value={qty} onChange={(e) => onQty(e.target.value)} placeholder="e.g. 300000" />
       </Field>
       <Field label="Buying price per unit (₹)" error={errors.unitPrice}>
-        <input type="number" min="0" step="0.01" inputMode="decimal" className={inputCls} value={unitPrice} onChange={(e) => onUnit(e.target.value)} placeholder="e.g. 0.90" />
+        <input type="number" min="0" step="any" inputMode="decimal" className={inputCls} value={unitPrice} onChange={(e) => onUnit(e.target.value)} placeholder="e.g. 0.90" />
       </Field>
       <Field label="…or total amount paid (₹)" hint="Typing a total works out the per-unit price" className="sm:col-span-2">
-        <input type="number" min="0" step="1" inputMode="decimal" className={inputCls} value={total}
+        <input type="number" min="0" step="any" inputMode="decimal" className={inputCls} value={total}
           onChange={(e) => { const t = Number(e.target.value); if (Number(qty) > 0 && t >= 0) onUnit(String(round2(t / Number(qty)) || '')); }}
           placeholder={Number(qty) > 0 ? 'e.g. 270000' : 'Enter quantity first'} disabled={!(Number(qty) > 0)} />
       </Field>
@@ -633,16 +633,16 @@ function PaperInputs({ kg, ppk, perKg, onKg, onPpk, onPerKg, errors = {} }) {
   return (
     <>
       <Field label="Weight bought (kg)" error={errors.kg}>
-        <input type="number" min="0" step="0.5" inputMode="decimal" className={inputCls} value={kg} onChange={(e) => onKg(e.target.value)} placeholder="e.g. 50" />
+        <input type="number" min="0" step="any" inputMode="decimal" className={inputCls} value={kg} onChange={(e) => onKg(e.target.value)} placeholder="e.g. 50" />
       </Field>
       <Field label="Papers per kg" error={errors.ppk} hint="Default from Settings">
-        <input type="number" min="1" step="1" inputMode="numeric" className={inputCls} value={ppk} onChange={(e) => onPpk(e.target.value)} />
+        <input type="number" min="1" step="any" inputMode="numeric" className={inputCls} value={ppk} onChange={(e) => onPpk(e.target.value)} />
       </Field>
       <Field label="Buying price per kg (₹)" error={errors.perKg}>
-        <input type="number" min="0" step="0.5" inputMode="decimal" className={inputCls} value={perKg} onChange={(e) => onPerKg(e.target.value)} placeholder="e.g. 110" />
+        <input type="number" min="0" step="any" inputMode="decimal" className={inputCls} value={perKg} onChange={(e) => onPerKg(e.target.value)} placeholder="e.g. 110" />
       </Field>
       <Field label="…or total amount paid (₹)" hint="Typing a total works out the price per kg">
-        <input type="number" min="0" step="1" inputMode="decimal" className={inputCls} value={total}
+        <input type="number" min="0" step="any" inputMode="decimal" className={inputCls} value={total}
           onChange={(e) => { const t = Number(e.target.value); if (K > 0 && t >= 0) onPerKg(String(round2(t / K) || '')); }}
           placeholder={K > 0 ? 'e.g. 5500' : 'Enter weight first'} disabled={!(K > 0)} />
       </Field>
@@ -743,7 +743,7 @@ function ExpenseModal({ initial, onSave, onClose }) {
         </Field>
         <Field label="Description" error={err('item')} className="sm:col-span-2"><input className={inputCls} value={f.item} onChange={(e) => set('item', e.target.value)} placeholder={f.category === 'machinery' ? 'e.g. Hydraulic press / Machine 2 die' : 'e.g. Weekly wages'} /></Field>
         <Field label="Date" error={err('date')}><input type="date" className={inputCls} value={f.date} onChange={(e) => set('date', e.target.value)} /></Field>
-        <Field label="Amount (₹)" error={err('amount')}><input type="number" min="0" step="1" className={inputCls} value={f.amount} onChange={(e) => set('amount', e.target.value)} placeholder="e.g. 180000" /></Field>
+        <Field label="Amount (₹)" error={err('amount')}><input type="number" min="0" step="any" className={inputCls} value={f.amount} onChange={(e) => set('amount', e.target.value)} placeholder="e.g. 180000" /></Field>
         <Field label="Paid to (optional)"><input className={inputCls} value={f.payee} onChange={(e) => set('payee', e.target.value)} /></Field>
         <Field label="Payment status"><select className={inputCls} value={f.payment} onChange={(e) => set('payment', e.target.value)}><option>Paid</option><option>Pending</option></select></Field>
       </form>
@@ -843,10 +843,10 @@ function OrderModal({ initial, purchases, sales, productions, settings, onSave, 
           </Field>
           <Field label="Quantity (plates)" error={err('qty')} className="sm:col-span-2"
             hint={est ? `${est.ready ? `${fmtNum(est.ready)} ready to sell + ` : ''}${fmtNum(est.canMake)} more can be made from raw stock${f.date < todayISO() ? ` on ${fmtDate(f.date)}` : ''} (limited by ${est.limitedBy})${Object.entries(PRODUCTS).some(([c, q]) => c !== f.product && q.leaf === est.leafMat) ? ` · uses the same ${MATERIALS[est.leafMat].label} stock as ${Object.entries(PRODUCTS).filter(([c, q]) => c !== f.product && q.leaf === est.leafMat).map(([, q]) => q.name).join(', ')}` : ''}` : null}>
-            <input type="number" min="0" step="100" inputMode="numeric" className={inputCls} value={f.qty} onChange={(e) => set('qty', e.target.value)} placeholder="e.g. 10000" autoFocus={!editing} />
+            <input type="number" min="0" step="any" inputMode="numeric" className={inputCls} value={f.qty} onChange={(e) => set('qty', e.target.value)} placeholder="e.g. 10000" autoFocus={!editing} />
           </Field>
           <Field label="Selling price per plate (₹)" error={err('price')} className="sm:col-span-2">
-            <input type="number" min="0" step="0.05" inputMode="decimal" className={inputCls} value={f.price} onChange={(e) => set('price', e.target.value)} />
+            <input type="number" min="0" step="any" inputMode="decimal" className={inputCls} value={f.price} onChange={(e) => set('price', e.target.value)} />
             <div className="mt-2 flex flex-wrap gap-1.5">
               {chip('Break-even', breakEven, 'text-rose-700')}
               {chip(lp !== undefined ? 'Last sold' : 'List', lp ?? settings.products[f.product].price, 'text-slate-800')}
@@ -880,7 +880,7 @@ function OrderModal({ initial, purchases, sales, productions, settings, onSave, 
           <Field label="Order date" error={err('date')}><input type="date" className={inputCls} value={f.date} onChange={(e) => set('date', e.target.value)} /></Field>
           <Field label="Payment"><select className={inputCls} value={f.payment} onChange={(e) => set('payment', e.target.value)}><option>Pending</option><option>Paid</option></select></Field>
           <Field label="Making charge per plate (₹)" hint="Filled from Settings; saved with this order" className="sm:col-span-2">
-            <input type="number" min="0" step="0.05" className={inputCls} value={f.making} onChange={(e) => set('making', e.target.value)} />
+            <input type="number" min="0" step="any" className={inputCls} value={f.making} onChange={(e) => set('making', e.target.value)} />
           </Field>
         </form>
 
@@ -969,11 +969,11 @@ function ProductionModal({ initial, purchases, sales, productions, settings, onS
           </select>
         </Field>
         <Field label="Plates made" error={err('qty')} hint={est ? `Raw stock allows up to ${fmtNum(est.canMake)} (${fmtNum(est.leafAvail)} ${MATERIALS[est.leafMat].label}, ${fmtNum(est.sheetAvail)} ${MATERIALS[est.sheetMat].label})` : null}>
-          <input type="number" min="0" step="100" inputMode="numeric" className={inputCls} value={f.qty} onChange={(e) => set('qty', e.target.value)} placeholder="e.g. 5000" autoFocus={!editing} />
+          <input type="number" min="0" step="any" inputMode="numeric" className={inputCls} value={f.qty} onChange={(e) => set('qty', e.target.value)} placeholder="e.g. 5000" autoFocus={!editing} />
         </Field>
         <Field label="Date made" error={err('date')}><input type="date" className={inputCls} value={f.date} onChange={(e) => set('date', e.target.value)} /></Field>
         <Field label="Making charge per plate (₹)" hint="Paid when the plates are pressed">
-          <input type="number" min="0" step="0.05" className={inputCls} value={f.making} onChange={(e) => set('making', e.target.value)} />
+          <input type="number" min="0" step="any" className={inputCls} value={f.making} onChange={(e) => set('making', e.target.value)} />
         </Field>
         <Field label="Note (optional)"><input className={inputCls} value={f.note || ''} onChange={(e) => set('note', e.target.value)} placeholder="e.g. Batch for wedding season" /></Field>
       </form>
@@ -1015,19 +1015,19 @@ function SettingsModal({ settings, onSave, onClose }) {
               {Object.entries(PRODUCTS).map(([c, p]) => (
                 <tr key={c}>
                   <td className="px-3 py-2 font-medium text-slate-700">{p.name}</td>
-                  <td className="px-3 py-2"><input type="number" step="0.05" min="0" className={inputCls} value={f.products[c].making} onChange={(e) => setP(c, 'making', e.target.value)} aria-label={`${p.name} making charge`} /></td>
-                  <td className="px-3 py-2"><input type="number" step="0.05" min="0" className={inputCls} value={f.products[c].price} onChange={(e) => setP(c, 'price', e.target.value)} aria-label={`${p.name} list price`} /></td>
+                  <td className="px-3 py-2"><input type="number" step="any" min="0" className={inputCls} value={f.products[c].making} onChange={(e) => setP(c, 'making', e.target.value)} aria-label={`${p.name} making charge`} /></td>
+                  <td className="px-3 py-2"><input type="number" step="any" min="0" className={inputCls} value={f.products[c].price} onChange={(e) => setP(c, 'price', e.target.value)} aria-label={`${p.name} list price`} /></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
         <Field label="Paper roll: papers per kg" hint="Default for new paper-roll purchases. Past purchases keep the rate they were saved with.">
-          <input type="number" min="1" step="1" className={inputCls} value={f.papersPerKg} onChange={(e) => setF({ ...f, papersPerKg: e.target.value })} />
+          <input type="number" min="1" step="any" className={inputCls} value={f.papersPerKg} onChange={(e) => setF({ ...f, papersPerKg: e.target.value })} />
         </Field>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Field label="Target margin %" hint="Used for suggested prices"><input type="number" min="0" max="90" className={inputCls} value={f.targetMargin} onChange={(e) => setF({ ...f, targetMargin: e.target.value })} /></Field>
-          <Field label="Low-stock alert below" hint="Leaves, sheets or papers"><input type="number" min="0" step="500" className={inputCls} value={f.lowStockQty} onChange={(e) => setF({ ...f, lowStockQty: e.target.value })} /></Field>
+          <Field label="Low-stock alert below" hint="Leaves, sheets or papers"><input type="number" min="0" step="any" className={inputCls} value={f.lowStockQty} onChange={(e) => setF({ ...f, lowStockQty: e.target.value })} /></Field>
           <Field label="Recover investment in" hint="Months"><input type="number" min="1" className={inputCls} value={f.recoverMonths} onChange={(e) => setF({ ...f, recoverMonths: e.target.value })} /></Field>
         </div>
       </form>
@@ -1141,7 +1141,7 @@ function NumSlider({ label, value, set, min, max, step }) {
     <div>
       <div className="flex items-center justify-between gap-2 text-xs">
         <span className="font-medium text-slate-700">{label}</span>
-        <input type="number" step={step} min="0" value={value} onChange={(e) => set(Number(e.target.value) || 0)} className="w-24 rounded-md border border-slate-300 px-2 py-1 text-right text-xs tabular-nums focus:border-indigo-500 focus:outline-none" aria-label={label} />
+        <input type="number" step="any" min="0" value={value} onChange={(e) => set(Number(e.target.value) || 0)} className="w-24 rounded-md border border-slate-300 px-2 py-1 text-right text-xs tabular-nums focus:border-indigo-500 focus:outline-none" aria-label={label} />
       </div>
       <input type="range" min={min} max={max} step={step} value={Math.min(max, Math.max(min, value))} onChange={(e) => set(Number(e.target.value))} className="mt-1.5 w-full accent-indigo-600" aria-label={`${label} slider`} />
     </div>
@@ -2287,7 +2287,7 @@ function Dashboard({ cloud = null, initialData = null }) {
                 {toRecover > 0 && (
                   <>
                     <label className="flex items-center gap-1.5">Selling
-                      <input type="number" min="0" step="1000" value={ppm} onChange={(e) => setPlatesPerMonth(Math.max(0, Number(e.target.value) || 0))} className="w-24 rounded-md border border-slate-300 px-2 py-1 text-right tabular-nums" aria-label="Plates per month" />
+                      <input type="number" min="0" step="any" value={ppm} onChange={(e) => setPlatesPerMonth(Math.max(0, Number(e.target.value) || 0))} className="w-24 rounded-md border border-slate-300 px-2 py-1 text-right tabular-nums" aria-label="Plates per month" />
                       plates/month for <b>{settings.recoverMonths}</b> months
                     </label>
                     <span>→ charge <b>{ppm > 0 ? fmtINR2(extraPerPlate) : '—'}</b> per plate above cost to recover it.</span>
