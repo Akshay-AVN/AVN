@@ -26,7 +26,7 @@ import {
 import {
   Leaf, IndianRupee, TrendingUp, TrendingDown, Package, Wallet, ShoppingCart, Plus, Upload, Calendar, X,
   Pencil, Trash2, Layers, Calculator, Info, AlertTriangle, CheckCircle2, Clock, RotateCcw, FileSpreadsheet,
-  Database, Boxes, Search, LayoutDashboard, Settings, Copy, Phone, Target, PiggyBank, Wrench, Factory,
+  Database, Boxes, Search, LayoutDashboard, Settings, Copy, Phone, Target, PiggyBank, Wrench, Factory, ScrollText,
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
@@ -297,10 +297,12 @@ function runFifo(purchases, sales, productions = []) {
     lotIndex[p.id] = lot;
   });
 
-  const takeRaw = (mat, need, date, ref) => {
+  const takeRaw = (mat, need, date, ref, prefer) => {
     const taken = [];
     const pool = lots[mat] || [];
-    for (const lot of pool) {
+    // A chosen batch (e.g. a particular leaf vendor) is used first; anything more comes from the oldest stock.
+    const chosen = prefer && lotIndex[prefer] && lotIndex[prefer].mat === mat ? lotIndex[prefer] : null;
+    for (const lot of chosen ? [chosen, ...pool.filter((l) => l !== chosen)] : pool) {
       if (need <= 0) break;
       if (lot.date > date || lot.remaining <= 0) continue;
       const t = Math.min(need, lot.remaining);
@@ -315,10 +317,10 @@ function runFifo(purchases, sales, productions = []) {
     }
     return { taken, short: need > 0 ? need : 0, cost: sum(taken, (t) => t.qty * t.unitCost) };
   };
-  const makeFromRaw = (product, base, qty, date, ref) => {
+  const makeFromRaw = (product, base, qty, date, ref, leafLot) => {
     const out = { lines: {}, unitMat: {}, shortfall: {}, materialCost: 0 };
     bomOf(product, base).forEach((b) => {
-      const r = takeRaw(b.mat, qty * b.qty, date, ref);
+      const r = takeRaw(b.mat, qty * b.qty, date, ref, b.mat === PRODUCTS[product].leaf ? leafLot : null);
       out.lines[b.mat] = r.taken;
       if (r.short) out.shortfall[b.mat] = r.short;
       out.materialCost += r.cost;
@@ -339,7 +341,7 @@ function runFifo(purchases, sales, productions = []) {
     const qty = Number(rec.qty) || 0;
     const making = Number(rec.making) || 0;
     if (kind === 0) {
-      const r = makeFromRaw(rec.product, rec.base, qty, rec.date, rec.id);
+      const r = makeFromRaw(rec.product, rec.base, qty, rec.date, rec.id, rec.leafLot);
       const unitCost = qty ? r.materialCost / qty + making : 0;
       const lot = { id: rec.id, product: rec.product, date: rec.date, createdAt: rec.createdAt, qty, remaining: qty, unitCost, unitMat: r.unitMat, making, used: [] };
       (fg[rec.product] = fg[rec.product] || []).push(lot);
@@ -358,7 +360,7 @@ function runFifo(purchases, sales, productions = []) {
       lot.used.push({ date: rec.date, qty: t, ref: rec.id });
       fromStock.push({ prodId: lot.id, qty: t, unitCost: lot.unitCost, unitMat: lot.unitMat, making: lot.making });
     }
-    const made = need > 0 ? makeFromRaw(rec.product, rec.base, need, rec.date, rec.id) : { lines: {}, unitMat: {}, shortfall: {}, materialCost: 0 };
+    const made = need > 0 ? makeFromRaw(rec.product, rec.base, need, rec.date, rec.id, rec.leafLot) : { lines: {}, unitMat: {}, shortfall: {}, materialCost: 0 };
     const stockCost = sum(fromStock, (x) => x.qty * x.unitCost);
     const stockMaking = sum(fromStock, (x) => x.qty * x.making);
     const res = {
@@ -452,7 +454,7 @@ function downloadFile(name, content) {
     return true;
   } catch (e) { return false; }
 }
-const DATA_HEADER = ['record_type', 'id', 'date', 'type', 'item', 'party', 'phone', 'qty', 'unit_price', 'making_charge', 'payment_status', 'kg', 'papers_per_kg', 'price_per_kg', 'base', 'created_at'];
+const DATA_HEADER = ['record_type', 'id', 'date', 'type', 'item', 'party', 'phone', 'qty', 'unit_price', 'making_charge', 'payment_status', 'kg', 'papers_per_kg', 'price_per_kg', 'base', 'created_at', 'leaf_batch'];
 
 /* ────────────────────────────── Small UI pieces ────────────────────────────── */
 
@@ -590,9 +592,10 @@ const Th = ({ children, right, className = '' }) => (
 const Td = ({ children, right, className = '', title }) => (
   <td title={title} className={`whitespace-nowrap px-3 py-2.5 text-sm ${right ? 'text-right tabular-nums' : ''} ${className}`}>{children}</td>
 );
-function RowActions({ onEdit, onDelete }) {
+function RowActions({ onEdit, onDelete, onHistory }) {
   return (
     <div className="flex justify-end gap-0.5">
+      {onHistory && <button className={btn.icon} onClick={onHistory} aria-label="History" title="See every change to this record"><ScrollText className="h-4 w-4" /></button>}
       <button className={btn.icon} onClick={onEdit} aria-label="Edit"><Pencil className="h-4 w-4" /></button>
       <button className={`${btn.icon} hover:!text-rose-600`} onClick={onDelete} aria-label="Delete"><Trash2 className="h-4 w-4" /></button>
     </div>
@@ -753,12 +756,12 @@ function OrderModal({ initial, purchases, sales, productions, settings, onSave, 
   const lastPrice = (code) => sales.filter((s) => s.product === code && s.id !== initial?.id).sort(byDateId).pop()?.price;
   const suggested = (code) => lastPrice(code) ?? settings.products[code].price;
   const [f, setF] = useState(() => (initial
-    ? { ...initial, base: initial.base || PRODUCTS[initial.product].sheet, qty: String(initial.qty), price: String(initial.price), making: String(initial.making) }
-    : { date: todayISO(), customer: '', phone: '', product: 'P14', base: PRODUCTS.P14.sheet, qty: '', price: String(suggested('P14')), making: String(settings.products.P14.making), payment: 'Pending' }));
+    ? { ...initial, base: initial.base || PRODUCTS[initial.product].sheet, leafLot: initial.leafLot || '', qty: String(initial.qty), price: String(initial.price), making: String(initial.making) }
+    : { date: todayISO(), customer: '', phone: '', product: 'P14', base: PRODUCTS.P14.sheet, leafLot: '', qty: '', price: String(suggested('P14')), making: String(settings.products.P14.making), payment: 'Pending' }));
   const [touched, setTouched] = useState(false);
   const [copied, setCopied] = useState(false);
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
-  const pickProduct = (code) => setF((p) => ({ ...p, product: code, base: PRODUCTS[code].sheet, price: String(suggested(code)), making: String(settings.products[code].making) }));
+  const pickProduct = (code) => setF((p) => ({ ...p, product: code, base: PRODUCTS[code].sheet, leafLot: PRODUCTS[code].leaf === PRODUCTS[p.product].leaf ? p.leafLot : '', price: String(suggested(code)), making: String(settings.products[code].making) }));
   const qty = Number(f.qty); const price = Number(f.price); const making = Number(f.making) || 0;
 
   const est = useMemo(() => {
@@ -769,18 +772,27 @@ function OrderModal({ initial, purchases, sales, productions, settings, onSave, 
     // Ready plates of this type available on this date, after all other recorded orders.
     const ready = sum((base.fg[f.product] || []).filter((l) => l.date < f.date || (l.date === f.date && (l.createdAt || '') <= (initial ? initial.createdAt || '' : '9999'))), (l) => l.remaining);
     // Stock that can serve an order on this date, after all other recorded orders.
-    const avail = (mat) => sum((base.lots[mat] || []).filter((l) => l.date <= f.date), (l) => l.remaining);
+    // For a past date: what was in stock on that day (later orders don't count against it).
+    const past = f.date < todayISO();
+    const avail = (mat) => sum((base.lots[mat] || []).filter((l) => l.date <= f.date), (l) => Math.max(0, past ? remainingAsOf(l, f.date) : l.remaining));
     const sheetMat = f.base;
     const leafAvail = avail(leafMat); const sheetAvail = avail(sheetMat);
     const canMake = Math.min(leafAvail, sheetAvail);
     const limitedBy = leafAvail <= sheetAvail ? MATERIALS[leafMat].label : MATERIALS[sheetMat].label;
     const q = qty > 0 ? qty : 1;
-    const draft = { id: initial?.id || 'ZZ-DRAFT', createdAt: initial ? initial.createdAt : '9999', date: f.date, product: f.product, base: f.base, qty: q, price: price || 0, making };
+    const draft = { id: initial?.id || 'ZZ-DRAFT', createdAt: initial ? initial.createdAt : '9999', date: f.date, product: f.product, base: f.base, leafLot: f.leafLot || undefined, qty: q, price: price || 0, making };
     const run = runFifo(purchases, [...others, draft], productions);
     const a = run.allocs[draft.id];
     const newlyShort = others.filter((s) => Object.keys(run.allocs[s.id]?.shortfall || {}).length && !Object.keys(base.allocs[s.id]?.shortfall || {}).length);
-    return { a, leafMat, sheetMat, ready, leafAvail, sheetAvail, canMake, available: ready + canMake, limitedBy, newlyShort, basis: basisOf(a, leafMat) };
-  }, [f.date, f.product, f.base, qty, price, making, purchases, sales, productions, initial]);
+    // Leaf batches (vendor @ price) bought on or before the order date, with what is left after the other orders.
+    const leafLots = (base.lots[leafMat] || []).filter((l) => l.date <= f.date || l.id === f.leafLot)
+      .map((l) => ({ ...l, left: Math.max(0, remainingAsOf(l, f.date)) }));
+    const fromChosen = sum((a.lines[leafMat] || []).filter((t) => f.leafLot && t.batchId === f.leafLot), (t) => t.qty);
+    // This order's own gap: plates whose raw material wasn't in stock on the order date (costed at the latest price).
+    const ownShort = Math.max(0, ...Object.values(a.shortfall || {}));
+    const shortMats = Object.keys(a.shortfall || {});
+    return { a, leafMat, sheetMat, ready, leafAvail, sheetAvail, canMake, available: ready + canMake, limitedBy, newlyShort, leafLots, fromChosen, ownShort, shortMats, basis: basisOf(a, leafMat) };
+  }, [f.date, f.product, f.base, f.leafLot, qty, price, making, purchases, sales, productions, initial]);
 
   const a = est?.a;
   const unitCost = a?.unitCost || 0;
@@ -790,13 +802,18 @@ function OrderModal({ initial, purchases, sales, productions, settings, onSave, 
   const total = qty > 0 ? qty * price : 0;
   const totalCost = qty > 0 ? qty * unitCost : 0;
   const margin = price > 0 ? (profitPerPlate / price) * 100 : NaN;
-  const short = qty > 0 && est && qty > est.available;
+  const isPast = isISODate(f.date) && f.date < todayISO();
+  // Today / future: can we still deliver it from what's left? Past: was the material for it in the records on that date?
+  const short = qty > 0 && est && !isPast && qty > est.available;
+  const pastGap = qty > 0 && est && isPast ? est.ownShort : 0;
+  const chosenLot = est?.leafLots.find((l) => l.id === f.leafLot);
+  const chosenNeed = est ? Math.max(0, (qty > 0 ? qty : 0) - (est.a.fromStock || []).reduce((t, x) => t + x.qty, 0)) : 0;
   const lp = lastPrice(f.product);
 
   const errors = { date: !isISODate(f.date) && 'Pick a date', customer: !f.customer.trim() && 'Required', qty: !(qty > 0) && 'Enter quantity', price: !(price > 0) && 'Enter selling price' };
   const valid = !Object.values(errors).some(Boolean);
   const err = (k) => (touched ? errors[k] : null);
-  const submit = (e) => { e.preventDefault(); setTouched(true); if (valid) onSave({ id: initial?.id, date: f.date, customer: f.customer.trim(), phone: f.phone.trim(), product: f.product, base: f.base, qty, price, making, payment: f.payment }); };
+  const submit = (e) => { e.preventDefault(); setTouched(true); if (valid) onSave({ id: initial?.id, date: f.date, customer: f.customer.trim(), phone: f.phone.trim(), product: f.product, base: f.base, leafLot: f.leafLot || undefined, qty, price, making, payment: f.payment }); };
 
   const quote = `AVN EcoPlates — Quotation\n${PRODUCTS[f.product].name} × ${fmtNum(qty || 0)} @ ${fmtINR2(price)} per plate\nTotal: ${fmtINR(total)}`;
   const copyQuote = async () => {
@@ -825,7 +842,7 @@ function OrderModal({ initial, purchases, sales, productions, settings, onSave, 
             </select>
           </Field>
           <Field label="Quantity (plates)" error={err('qty')} className="sm:col-span-2"
-            hint={est ? `${est.ready ? `${fmtNum(est.ready)} ready to sell + ` : ''}${fmtNum(est.canMake)} more can be made from raw stock (limited by ${est.limitedBy})${Object.entries(PRODUCTS).some(([c, q]) => c !== f.product && q.leaf === est.leafMat) ? ` · uses the same ${MATERIALS[est.leafMat].label} stock as ${Object.entries(PRODUCTS).filter(([c, q]) => c !== f.product && q.leaf === est.leafMat).map(([, q]) => q.name).join(', ')}` : ''}` : null}>
+            hint={est ? `${est.ready ? `${fmtNum(est.ready)} ready to sell + ` : ''}${fmtNum(est.canMake)} more can be made from raw stock${f.date < todayISO() ? ` on ${fmtDate(f.date)}` : ''} (limited by ${est.limitedBy})${Object.entries(PRODUCTS).some(([c, q]) => c !== f.product && q.leaf === est.leafMat) ? ` · uses the same ${MATERIALS[est.leafMat].label} stock as ${Object.entries(PRODUCTS).filter(([c, q]) => c !== f.product && q.leaf === est.leafMat).map(([, q]) => q.name).join(', ')}` : ''}` : null}>
             <input type="number" min="0" step="100" inputMode="numeric" className={inputCls} value={f.qty} onChange={(e) => set('qty', e.target.value)} placeholder="e.g. 10000" autoFocus={!editing} />
           </Field>
           <Field label="Selling price per plate (₹)" error={err('price')} className="sm:col-span-2">
@@ -835,6 +852,18 @@ function OrderModal({ initial, purchases, sales, productions, settings, onSave, 
               {chip(lp !== undefined ? 'Last sold' : 'List', lp ?? settings.products[f.product].price, 'text-slate-800')}
               {chip(`${settings.targetMargin}% margin`, targetPrice, 'text-emerald-700')}
             </div>
+          </Field>
+          <Field label={`${MATERIALS[PRODUCTS[f.product].leaf].label} from (vendor @ buying price)`} className="sm:col-span-2"
+            hint={!f.leafLot ? 'Automatic uses the oldest leaf in stock first. Pick a vendor if you know which leaf went into this order.'
+              : chosenLot && chosenLot.date > f.date ? `This batch was bought on ${fmtDate(chosenLot.date)}, after the order date, so it can't be used — the oldest stock is used instead.`
+              : chosenLot && chosenNeed > est.fromChosen ? `Only ${fmtNum(est.fromChosen)} of this batch was left on ${fmtDate(f.date)} — the other ${fmtNum(chosenNeed - est.fromChosen)} come from the oldest stock.`
+              : (est?.a.fromStock || []).length ? 'Ready plates are used first; this vendor applies to the plates made for this order.' : null}>
+            <select className={inputCls} value={f.leafLot} onChange={(e) => set('leafLot', e.target.value)}>
+              <option value="">Automatic — oldest stock first</option>
+              {(est?.leafLots || []).map((l) => (
+                <option key={l.id} value={l.id}>{l.supplier} @ {fmtINR2(l.unitCost)} · bought {fmtDate(l.date)} · {fmtNum(l.left)} left ({l.id})</option>
+              ))}
+            </select>
           </Field>
           {f.base !== PRODUCTS[f.product].sheet && (
             <div className="flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-800 sm:col-span-2">
@@ -881,6 +910,7 @@ function OrderModal({ initial, purchases, sales, productions, settings, onSave, 
               )}
               {profitPerPlate < 0 && price > 0 && <Warn tone="rose">This price is below cost — you lose {fmtINR2(-profitPerPlate)} on every plate.</Warn>}
               {short && <Warn tone="rose">Not enough stock: {fmtNum(est.ready)} ready + {fmtNum(est.canMake)} can be made ({fmtNum(est.leafAvail)} {MATERIALS[est.leafMat].label}, {fmtNum(est.sheetAvail)} {MATERIALS[est.sheetMat].label}). {fmtNum(qty - est.available)} plates short — buy more raw material before delivery.</Warn>}
+              {pastGap > 0 && <Warn tone="amber">Past order: your stock records on {fmtDate(f.date)} don't cover {fmtNum(pastGap)} of these plates ({est.shortMats.map((m) => MATERIALS[m].label).join(', ')}). You can still save it — those plates are costed at the latest buying price. If that material was bought earlier, add it under Stock with its real purchase date so the cost is exact.</Warn>}
               {est.newlyShort.length > 0 && <Warn tone="amber">Back-dating this order leaves {est.newlyShort.length} later order(s) short of stock ({est.newlyShort.map((s) => s.id).join(', ')}).</Warn>}
             </>
           )}
@@ -1189,6 +1219,156 @@ const TABS = [
   { k: 'investments', label: 'Investments', icon: PiggyBank },
 ];
 
+/* ────────────────────────────── Change history (shared database only) ────────────────────────────── */
+
+const HIST_KIND = { sale: 'Order', purchase: 'Purchase', expense: 'Investment', production: 'Production', settings: 'Settings' };
+const HIST_TONE = { created: 'emerald', edited: 'indigo', deleted: 'rose', restored: 'amber' };
+const FIELD_LABELS = {
+  date: 'Date', customer: 'Customer', phone: 'Phone', product: 'Plate', base: 'Base', qty: 'Quantity', price: 'Selling price',
+  making: 'Making charge', payment: 'Payment', material: 'Material', supplier: 'Supplier', unitPrice: 'Price / unit', kg: 'Weight (kg)',
+  papersPerKg: 'Papers per kg', perKg: 'Price per kg', category: 'Type', item: 'Description', payee: 'Paid to', amount: 'Amount', note: 'Note', leafLot: 'Leaf batch',
+  targetMargin: 'Target margin %', lowStockQty: 'Low-stock alert', recoverMonths: 'Recover investment in (months)',
+};
+const HIDDEN_FIELDS = new Set(['id', 'createdAt', 'enteredBy', 'editedBy']);
+function fmtField(k, v) {
+  if (v === undefined || v === null || v === '') return '—';
+  if (k === 'product') return PRODUCTS[v]?.name || v;
+  if (k === 'material' || k === 'base') return MATERIALS[v]?.label || v;
+  if (k === 'category') return EXPENSE_CATS[v]?.label || v;
+  if (['price', 'making', 'unitPrice', 'perKg'].includes(k)) return fmtINR2(Number(v));
+  if (k === 'leafLot') return v;
+  if (k === 'amount') return fmtINR(Number(v));
+  if (k === 'qty') return fmtNum(v);
+  if (k === 'date' && isISODate(v)) return fmtDate(v);
+  return typeof v === 'object' ? JSON.stringify(v) : String(v);
+}
+const flatten = (o, pre = '') => Object.entries(o || {}).reduce((acc, [k, v]) => (v && typeof v === 'object' && !Array.isArray(v)
+  ? Object.assign(acc, flatten(v, `${pre}${k}.`)) : Object.assign(acc, { [`${pre}${k}`]: v })), {});
+function fieldLabel(key) {
+  const parts = key.split('.');
+  if (parts[0] === 'products' && PRODUCTS[parts[1]]) return `${PRODUCTS[parts[1]].name} ${parts[2] === 'price' ? 'list price' : 'making charge'}`;
+  return FIELD_LABELS[parts[parts.length - 1]] || key;
+}
+/** What changed between two versions of a record, as readable "field: old → new" lines. */
+function diffOf(kind, a, b) {
+  const A = kind === 'settings' ? flatten(a) : (a || {});
+  const B = kind === 'settings' ? flatten(b) : (b || {});
+  return [...new Set([...Object.keys(A), ...Object.keys(B)])]
+    .filter((k) => !HIDDEN_FIELDS.has(k) && JSON.stringify(A[k]) !== JSON.stringify(B[k]))
+    .map((k) => { const f = k.split('.').pop(); const money = kind === 'settings' && f === 'price'; return { k, label: fieldLabel(k), from: money ? fmtINR2(A[k]) : fmtField(f, A[k]), to: money ? fmtINR2(B[k]) : fmtField(f, B[k]) }; });
+}
+function summaryOf(kind, d) {
+  if (!d) return '';
+  if (kind === 'sale') return `${d.customer} · ${fmtNum(d.qty)} × ${PRODUCTS[d.product]?.name || d.product} @ ${fmtINR2(d.price)} · ${fmtDate(d.date)}`;
+  if (kind === 'purchase') return `${MATERIALS[d.material]?.label || d.material} · ${fmtNum(d.qty)} @ ${fmtINR2(d.unitPrice)} · ${d.supplier} · ${fmtDate(d.date)}`;
+  if (kind === 'expense') return `${EXPENSE_CATS[d.category]?.label || d.category} · ${d.item} · ${fmtINR(d.amount)} · ${fmtDate(d.date)}`;
+  if (kind === 'production') return `${fmtNum(d.qty)} × ${PRODUCTS[d.product]?.name || d.product} made · ${fmtDate(d.date)}`;
+  return 'Plates & pricing settings';
+}
+const fmtWhen = (iso) => new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+function HistoryPanel({ cloud, data, focusId, setFocusId, onRestored }) {
+  const PAGE = 200;
+  const [rows, setRows] = useState([]);
+  const [status, setStatus] = useState('loading');
+  const [error, setError] = useState('');
+  const [hasMore, setHasMore] = useState(false);
+  const [kind, setKind] = useState('all');
+  const [who, setWho] = useState('all');
+  const [action, setAction] = useState('all');
+  const [restoring, setRestoring] = useState('');
+
+  const load = async (from = 0) => {
+    setStatus('loading'); setError('');
+    try {
+      let q = cloud.db.from('record_history').select('hid,at,by_email,action,kind,id,old_data,new_data');
+      if (focusId) q = q.eq('id', focusId);
+      const { data: got, error: err } = await q.order('at', { ascending: false }).range(from, from + PAGE - 1);
+      if (err) throw err;
+      setRows((r) => (from ? [...r, ...(got || [])] : (got || [])));
+      setHasMore((got || []).length === PAGE);
+      setStatus('ready');
+    } catch (e) {
+      setError(/record_history|relation|schema cache/i.test(e.message || '') ? 'History is not switched on yet — run supabase-history.sql in Supabase → SQL Editor.' : (e.message || 'Could not load history.'));
+      setStatus('error');
+    }
+  };
+  useEffect(() => { load(0); }, [focusId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const present = (k, id) => (k === 'settings' ? true : (data[KIND_LIST[k]] || []).some((x) => x.id === id));
+  const restore = async (r) => {
+    setRestoring(r.id);
+    const row = { kind: r.kind, id: r.id, data: r.new_data, deleted: false };
+    const { error: err } = await cloud.db.from('records').upsert([row], { onConflict: 'kind,id' });
+    setRestoring('');
+    if (err) { setError(`Not restored — ${err.message}`); return; }
+    onRestored(row);
+    load(0);
+  };
+
+  const people = [...new Set(rows.map((r) => r.by_email).filter(Boolean))];
+  const shown = rows.filter((r) => (kind === 'all' || r.kind === kind) && (who === 'all' || r.by_email === who) && (action === 'all' || r.action === action));
+  const sel = 'rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs';
+
+  return (
+    <Card title={focusId ? `History of ${focusId}` : 'Change History'} icon={ScrollText} bodyClass="p-0"
+      subtitle="Every record created, edited, deleted or restored — who did it and when. Written by the database itself; it can't be edited or removed. (The date filter above doesn't apply here.)"
+      actions={<>
+        {focusId && <button className={btn.ghost} onClick={() => setFocusId('')}><X className="h-4 w-4" />Show all records</button>}
+        <select className={sel} value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Record type">
+          <option value="all">All types</option>{Object.entries(HIST_KIND).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+        </select>
+        <select className={sel} value={action} onChange={(e) => setAction(e.target.value)} aria-label="Change type">
+          <option value="all">All changes</option>{Object.keys(HIST_TONE).map((a) => <option key={a} value={a}>{a[0].toUpperCase() + a.slice(1)}</option>)}
+        </select>
+        <select className={sel} value={who} onChange={(e) => setWho(e.target.value)} aria-label="Person">
+          <option value="all">Everyone</option>{people.map((p) => <option key={p} value={p}>{p}</option>)}
+        </select>
+        <button className={btn.ghost} onClick={() => load(0)}><RotateCcw className="h-4 w-4" />Refresh</button>
+      </>}>
+      {error && <div className="p-4"><Warn tone="rose">{error}</Warn></div>}
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-slate-100">
+          <thead className="bg-slate-50/70"><tr><Th>When</Th><Th>Who</Th><Th>Change</Th><Th>Record</Th><Th>Details</Th><Th right><span className="sr-only">Actions</span></Th></tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {status === 'loading' && rows.length === 0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-sm text-slate-500">Loading history…</td></tr>}
+            {status !== 'loading' && shown.length === 0 && !error && <tr><td colSpan={6} className="px-3 py-8 text-center text-sm text-slate-500">No changes recorded yet.</td></tr>}
+            {shown.map((r) => {
+              const changes = r.action === 'edited' ? diffOf(r.kind, r.old_data, r.new_data) : [];
+              const canRestore = r.action === 'deleted' && !present(r.kind, r.id);
+              return (
+                <tr key={r.hid} className="align-top hover:bg-slate-50/60">
+                  <Td className="text-xs text-slate-600">{fmtWhen(r.at)}</Td>
+                  <Td className="text-xs">{r.by_email || '—'}</Td>
+                  <Td><Badge tone={HIST_TONE[r.action] || 'slate'}>{r.action[0].toUpperCase() + r.action.slice(1)}</Badge></Td>
+                  <Td>
+                    {r.kind === 'settings' ? <span className="text-sm">Settings</span> : (
+                      <button className="text-left text-sm hover:underline" onClick={() => setFocusId(r.id)} title="Show every change to this record">
+                        <span className="text-xs text-slate-500">{HIST_KIND[r.kind]}</span> <b className="text-slate-800">{r.id}</b>
+                      </button>
+                    )}
+                  </Td>
+                  <td className="px-3 py-2.5 text-sm text-slate-700">
+                    <div className="whitespace-normal">{summaryOf(r.kind, r.new_data)}</div>
+                    {changes.length > 0 && (
+                      <ul className="mt-1 space-y-0.5 text-xs">
+                        {changes.map((c) => <li key={c.k}><span className="text-slate-500">{c.label}:</span> <span className="text-rose-700 line-through decoration-rose-300">{c.from}</span> → <b className="text-emerald-700">{c.to}</b></li>)}
+                      </ul>
+                    )}
+                    {r.action === 'edited' && changes.length === 0 && <div className="mt-1 text-xs text-slate-400">Saved again with no visible change</div>}
+                  </td>
+                  <Td right>{canRestore && <button className={btn.ghost} disabled={restoring === r.id} onClick={() => restore(r)}><RotateCcw className="h-4 w-4" />{restoring === r.id ? 'Restoring…' : 'Restore'}</button>}</Td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {hasMore && !focusId && <div className="border-t border-slate-100 p-3 text-center"><button className={btn.ghost} onClick={() => load(rows.length)} disabled={status === 'loading'}>Load older changes</button></div>}
+    </Card>
+  );
+}
+
 /* ────────────────────────────── Sign-in & shared-database screens ────────────────────────────── */
 
 function CenterCard({ children }) {
@@ -1352,6 +1532,8 @@ function Dashboard({ cloud = null, initialData = null }) {
     return () => { cloud.db.removeChannel(ch); };
   }, [cloud]);
   const busyRef = useRef(false);
+  const [historyFocus, setHistoryFocus] = useState('');
+  const tabs = cloud ? [...TABS, { k: 'history', label: 'History', icon: ScrollText }] : TABS;
   const startFresh = () => {
     try { window.localStorage.setItem(`${STORAGE_KEY}-unreadable-${Date.now()}`, initial.raw); } catch (e) { /* ignore */ }
     setCanSave(true);
@@ -1585,6 +1767,7 @@ function Dashboard({ cloud = null, initialData = null }) {
     }
     setData((d) => ({ ...d, settings: s })); setToast({ tone: 'emerald', msg: 'Settings saved — applies to new orders' }); setModal(null);
   };
+  const historyFor = (id) => (cloud ? () => { setHistoryFocus(id); setTab('history'); window.scrollTo(0, 0); } : undefined);
   const askDelete = (listKey, rec, what) => setConfirm({
     title: `Delete ${rec.id}?`,
     message: `${what} Stock and profit figures will be recalculated.${cloud ? ' It is hidden for everyone, but kept in the database so it can be recovered.' : ''}`,
@@ -1659,13 +1842,13 @@ function Dashboard({ cloud = null, initialData = null }) {
     const rows = [DATA_HEADER,
       ...purchases.map((p) => ['purchase', p.id, p.date, p.material, '', p.supplier, '', p.qty, p.unitPrice, '', p.payment, p.kg ?? '', p.papersPerKg ?? '', p.perKg ?? '', '', p.createdAt || '']),
       ...expenses.map((e) => ['expense', e.id, e.date, e.category, e.item, e.payee, '', 1, e.amount, '', e.payment, '', '', '', '', e.createdAt || '']),
-      ...sales.map((s) => ['sale', s.id, s.date, s.product, '', s.customer, s.phone, s.qty, s.price, s.making, s.payment, '', '', '', s.base || PRODUCTS[s.product].sheet, s.createdAt || '']),
+      ...sales.map((s) => ['sale', s.id, s.date, s.product, '', s.customer, s.phone, s.qty, s.price, s.making, s.payment, '', '', '', s.base || PRODUCTS[s.product].sheet, s.createdAt || '', s.leafLot || '']),
       ...Object.entries(settings.products).map(([c, p]) => ['setting', c, '', 'product', '', '', '', '', p.price, p.making, '']),
       ['setting', 'targetMargin', '', 'value', '', '', '', settings.targetMargin, '', '', ''],
       ['setting', 'lowStockQty', '', 'value', '', '', '', settings.lowStockQty, '', '', ''],
       ['setting', 'recoverMonths', '', 'value', '', '', '', settings.recoverMonths, '', '', ''],
       ['setting', 'papersPerKg', '', 'value', '', '', '', settings.papersPerKg, '', '', ''],
-      ...productions.map((x) => ['production', x.id, x.date, x.product, x.note || '', '', '', x.qty, '', x.making, '', '', '', '', x.base || PRODUCTS[x.product].sheet, x.createdAt || '']),
+      ...productions.map((x) => ['production', x.id, x.date, x.product, x.note || '', '', '', x.qty, '', x.making, '', '', '', '', x.base || PRODUCTS[x.product].sheet, x.createdAt || '', x.leafLot || '']),
     ];
     const ok = downloadFile(`avn-ecoplates-backup_${today}.csv`, toCSV(rows));
     setToast(ok ? { tone: 'emerald', msg: 'Backup downloaded — keep it safe, you can import it later' } : { tone: 'rose', msg: 'Download blocked by the browser' });
@@ -1707,11 +1890,11 @@ function Dashboard({ cloud = null, initialData = null }) {
             const baseV = col(r, 'base');
             // Backups made before the paper roll had no base column — keep those orders on the base they used then.
             const base = MATERIALS[baseV] ? baseV : (h.includes('base') ? PRODUCTS[product].sheet : LEGACY_BASE[product]);
-            Sa.push({ id: col(r, 'id'), date, customer: col(r, 'party') || '—', phone: col(r, 'phone'), product, base, qty, price, making: mk === '' ? st.products[product].making : Number(mk) || 0, payment, ...ca });
+            Sa.push({ id: col(r, 'id'), date, customer: col(r, 'party') || '—', phone: col(r, 'phone'), product, base, qty, price, making: mk === '' ? st.products[product].making : Number(mk) || 0, payment, ...ca, ...(col(r, 'leaf_batch') ? { leafLot: col(r, 'leaf_batch') } : {}) });
           } else if (type === 'production') {
             const product = col(r, 'type'); if (!PRODUCTS[product]) { errs.push(line); return; }
             const baseV = col(r, 'base');
-            Pd.push({ id: col(r, 'id'), date, product, base: MATERIALS[baseV] ? baseV : PRODUCTS[product].sheet, qty, making: Number(col(r, 'making_charge')) || 0, note: col(r, 'item'), ...ca });
+            Pd.push({ id: col(r, 'id'), date, product, base: MATERIALS[baseV] ? baseV : PRODUCTS[product].sheet, qty, making: Number(col(r, 'making_charge')) || 0, note: col(r, 'item'), ...ca, ...(col(r, 'leaf_batch') ? { leafLot: col(r, 'leaf_batch') } : {}) });
           } else errs.push(line);
         });
         if (!P.length && !E.length && !Sa.length && !Pd.length) throw new Error('No valid rows found.');
@@ -1825,7 +2008,7 @@ function Dashboard({ cloud = null, initialData = null }) {
           </div>
         </div>
         <nav className="mx-auto flex max-w-[1440px] gap-1 overflow-x-auto px-4 sm:px-6" aria-label="Sections">
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <button key={t.k} onClick={() => setTab(t.k)} aria-current={tab === t.k ? 'page' : undefined}
               className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium transition ${tab === t.k ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
               <t.icon className="h-4 w-4" aria-hidden="true" />{t.label}
@@ -1989,7 +2172,7 @@ function Dashboard({ cloud = null, initialData = null }) {
                           <Td right>{fmtNum(x.qty - left)}</Td>
                           <Td>{left > 0 ? <Badge tone="amber" icon={Package}>{fmtNum(left)} ready</Badge> : <Badge tone="slate">all sold</Badge>}</Td>
                           <Td className="text-xs text-slate-500">{x.note || ''}</Td>
-                          <Td right><RowActions onEdit={() => setModal({ kind: 'production', record: x })} onDelete={() => askDelete('productions', x, `This removes ${fmtNum(x.qty)} ready ${PRODUCTS[x.product].name}s; their leaves and ${MATERIALS[baseMat].unit} go back to raw stock and any orders that used them are made to order instead.`)} /></Td>
+                          <Td right><RowActions onHistory={historyFor(x.id)} onEdit={() => setModal({ kind: 'production', record: x })} onDelete={() => askDelete('productions', x, `This removes ${fmtNum(x.qty)} ready ${PRODUCTS[x.product].name}s; their leaves and ${MATERIALS[baseMat].unit} go back to raw stock and any orders that used them are made to order instead.`)} /></Td>
                         </tr>
                       );
                     })}
@@ -2016,7 +2199,7 @@ function Dashboard({ cloud = null, initialData = null }) {
                           <Td right className="font-medium text-slate-800">{fmtINR2(b.unitPrice)}{b.perKg ? <div className="text-[11px] font-normal text-slate-400">₹{b.perKg}/kg</div> : null}</Td><Td right>{fmtINR(b.qty * b.unitPrice)}</Td>
                           <Td><div className="flex min-w-[150px] items-center gap-2"><div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${pct}%` }} /></div><span className="tabular-nums">{b.left > 0 ? fmtNum(b.left) : <span className="text-slate-400">used up</span>}</span></div></Td>
                           <Td><PaymentBadge status={b.payment} /></Td>
-                          <Td right><RowActions onEdit={() => setModal({ kind: 'stock', record: b })} onDelete={() => askDelete('purchases', b, `This removes ${fmtNum(b.qty)} ${MATERIALS[b.material].label} bought from ${b.supplier}.`)} /></Td>
+                          <Td right><RowActions onHistory={historyFor(b.id)} onEdit={() => setModal({ kind: 'stock', record: b })} onDelete={() => askDelete('purchases', b, `This removes ${fmtNum(b.qty)} ${MATERIALS[b.material].label} bought from ${b.supplier}.`)} /></Td>
                         </tr>
                       );
                     })}
@@ -2074,7 +2257,7 @@ function Dashboard({ cloud = null, initialData = null }) {
                           <Td right>{fmtINR(a.revenue)}</Td>
                           <Td right><span className={a.profit >= 0 ? 'font-medium text-emerald-700' : 'font-medium text-rose-700'}>{fmtINR(a.profit)}</span><span className="ml-1 text-[11px] text-slate-400">{mg.toFixed(0)}%</span></Td>
                           <Td><PaymentBadge status={s.payment} /></Td>
-                          <Td right><RowActions onEdit={() => setModal({ kind: 'order', record: s })} onDelete={() => askDelete('sales', s, `This removes the ${fmtNum(s.qty)}-plate order for ${s.customer}; its stock goes back into inventory.`)} /></Td>
+                          <Td right><RowActions onHistory={historyFor(s.id)} onEdit={() => setModal({ kind: 'order', record: s })} onDelete={() => askDelete('sales', s, `This removes the ${fmtNum(s.qty)}-plate order for ${s.customer}; its stock goes back into inventory.`)} /></Td>
                         </tr>
                       );
                     })}
@@ -2138,6 +2321,11 @@ function Dashboard({ cloud = null, initialData = null }) {
         )}
 
         {/* ───────── INVESTMENTS ───────── */}
+        {tab === 'history' && cloud && (
+          <HistoryPanel cloud={cloud} data={data} focusId={historyFocus} setFocusId={setHistoryFocus}
+            onRestored={(row) => { setData((d) => applyRow(d, row)); setToast({ tone: 'emerald', msg: `${row.id} restored` }); }} />
+        )}
+
         {tab === 'investments' && (
           <>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -2161,7 +2349,7 @@ function Dashboard({ cloud = null, initialData = null }) {
                         <Td><Badge tone={EXPENSE_CATS[e.category]?.capital ? 'indigo' : 'rose'}>{EXPENSE_CATS[e.category]?.label}</Badge></Td>
                         <Td>{e.item}</Td><Td>{e.payee}</Td><Td right className="font-medium text-slate-800">{fmtINR(e.amount)}</Td>
                         <Td><PaymentBadge status={e.payment} /></Td>
-                        <Td right><RowActions onEdit={() => setModal({ kind: 'expense', record: e })} onDelete={() => askDelete('expenses', e, `This removes "${e.item}" (${fmtINR(e.amount)}).`)} /></Td>
+                        <Td right><RowActions onHistory={historyFor(e.id)} onEdit={() => setModal({ kind: 'expense', record: e })} onDelete={() => askDelete('expenses', e, `This removes "${e.item}" (${fmtINR(e.amount)}).`)} /></Td>
                       </tr>
                     ))}
                   </tbody>
