@@ -1111,8 +1111,8 @@ function MaterialCard({ mat, stock, asOf, lowStockQty, latest, first, papersPerK
 
 function BreakEvenTable({ rows, targetMargin, compact }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-slate-100">
+    <div className="relative overflow-x-auto">
+      <table className="rt min-w-full divide-y divide-slate-100">
         <thead className="bg-slate-50/70"><tr>
           <Th>Plate</Th><Th right>Leaf</Th><Th right>Sheet / paper</Th><Th right>Making</Th><Th right>Cost / plate<br /><span className="font-normal normal-case">= break-even price</span></Th>
           <Th right>Last sold</Th><Th right>Profit / plate</Th><Th right>{targetMargin}% margin price</Th>{!compact && <Th right>Price to recover investment</Th>}<Th>Status</Th>
@@ -1211,11 +1211,34 @@ function PriceCalculator({ defaults, targetMargin, toRecover }) {
 /* ────────────────────────────── Main dashboard ────────────────────────────── */
 
 const PRESETS = [{ k: 'all', label: 'All Time' }, { k: 'month', label: 'This Month' }, { k: '30d', label: 'Last 30 Days' }, { k: 'custom', label: 'Custom' }];
+/* On phones, wide tables turn into one card per row: each cell shows its column name on the left. */
+const RT_CSS = `
+@media (max-width: 639px) {
+  table.rt, table.rt tbody, table.rt tr, table.rt td { display: block; width: 100%; }
+  table.rt thead { display: none; }
+  table.rt tr { padding: 10px 16px; }
+  table.rt td { position: relative; padding: 3px 0 3px 42%; min-height: 24px; white-space: normal; text-align: right; }
+  table.rt td::before { content: attr(data-label); position: absolute; left: 0; top: 4px; width: 40%; text-align: left; font-size: 11px; font-weight: 500; color: #64748b; text-transform: uppercase; letter-spacing: .02em; }
+  table.rt td[data-label=""] { padding-left: 0; }
+  table.rt td[colspan] { text-align: center; padding: 24px 0; }
+  table.rt td > div.flex { justify-content: flex-end; flex-wrap: wrap; }
+  table.rt td .min-w-\\[150px\\] { min-width: 0; }
+}`;
+/** Copies each column heading onto its cells (data-label) so the phone card view can show it. */
+function labelTables(root = document) {
+  root.querySelectorAll('table.rt').forEach((t) => {
+    const heads = [...t.querySelectorAll('thead th')].map((th) => { const x = th.textContent.trim(); return x === 'Actions' ? '' : x; });
+    t.querySelectorAll('tbody tr').forEach((tr) => {
+      [...tr.children].forEach((td, i) => { const l = td.colSpan > 1 ? '' : heads[i] || ''; if (td.getAttribute('data-label') !== l) td.setAttribute('data-label', l); });
+    });
+  });
+}
+
 const TABS = [
   { k: 'overview', label: 'Overview', icon: LayoutDashboard },
   { k: 'stock', label: 'Stock', icon: Boxes },
   { k: 'orders', label: 'Orders', icon: ShoppingCart },
-  { k: 'pricing', label: 'Pricing & Break-even', icon: Target },
+  { k: 'pricing', label: 'Pricing & Break-even', short: 'Pricing', icon: Target },
   { k: 'investments', label: 'Investments', icon: PiggyBank },
 ];
 
@@ -1327,8 +1350,8 @@ function HistoryPanel({ cloud, data, focusId, setFocusId, onRestored }) {
         <button className={btn.ghost} onClick={() => load(0)}><RotateCcw className="h-4 w-4" />Refresh</button>
       </>}>
       {error && <div className="p-4"><Warn tone="rose">{error}</Warn></div>}
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-slate-100">
+      <div className="relative overflow-x-auto">
+        <table className="rt min-w-full divide-y divide-slate-100">
           <thead className="bg-slate-50/70"><tr><Th>When</Th><Th>Who</Th><Th>Change</Th><Th>Record</Th><Th>Details</Th><Th right><span className="sr-only">Actions</span></Th></tr></thead>
           <tbody className="divide-y divide-slate-100">
             {status === 'loading' && rows.length === 0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-sm text-slate-500">Loading history…</td></tr>}
@@ -1540,6 +1563,12 @@ function Dashboard({ cloud = null, initialData = null }) {
   };
 
   const [tab, setTab] = useState('overview');
+  useEffect(() => {
+    labelTables();
+    const mo = new MutationObserver(() => labelTables());
+    mo.observe(document.body, { childList: true, subtree: true });
+    return () => mo.disconnect();
+  }, []);
   const [preset, setPreset] = useState('all');
   const [custom, setCustom] = useState({ start: '', end: '' });
   const [modal, setModal] = useState(null); // { kind: 'stock'|'expense'|'order'|'settings', record? }
@@ -1973,6 +2002,7 @@ function Dashboard({ cloud = null, initialData = null }) {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 antialiased">
+      <style>{RT_CSS}</style>
       {/* Header */}
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
@@ -1983,11 +2013,13 @@ function Dashboard({ cloud = null, initialData = null }) {
               <p className="text-xs text-slate-500">Areca Leaf Plates · Stock, Orders & Profit</p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button className={btn.emerald} onClick={() => setModal({ kind: 'order' })}><Phone className="h-4 w-4" />New Order</button>
-            <button className={btn.primary} onClick={() => setModal({ kind: 'stock' })}><Plus className="h-4 w-4" />Add Stock</button>
-            <button className={btn.ghost} onClick={() => setModal({ kind: 'production' })}><Factory className="h-4 w-4" />Record Production</button>
-            <button className={btn.ghost} onClick={() => setModal({ kind: 'expense' })}><PiggyBank className="h-4 w-4" />Add Investment</button>
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+            <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
+              <button className={`${btn.emerald} justify-center`} onClick={() => setModal({ kind: 'order' })}><Phone className="h-4 w-4" />New Order</button>
+              <button className={`${btn.primary} justify-center`} onClick={() => setModal({ kind: 'stock' })}><Plus className="h-4 w-4" />Add Stock</button>
+              <button className={`${btn.ghost} justify-center`} onClick={() => setModal({ kind: 'production' })}><Factory className="h-4 w-4" /><span className="sm:hidden">Production</span><span className="hidden sm:inline">Record Production</span></button>
+              <button className={`${btn.ghost} justify-center`} onClick={() => setModal({ kind: 'expense' })}><PiggyBank className="h-4 w-4" /><span className="sm:hidden">Investment</span><span className="hidden sm:inline">Add Investment</span></button>
+            </div>
             <div className="flex items-center rounded-lg border border-slate-300 bg-white shadow-sm">
               <button className="flex items-center gap-1.5 rounded-l-lg px-2.5 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50" onClick={exportReport} title="Download a summary report (CSV)"><FileSpreadsheet className="h-4 w-4" /><span className="hidden lg:inline">Report</span></button>
               <button className="flex items-center gap-1.5 border-l border-slate-200 px-2.5 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50" onClick={exportData} title="Download a backup of all data (CSV)"><Database className="h-4 w-4" /><span className="hidden lg:inline">Backup</span></button>
@@ -2007,23 +2039,23 @@ function Dashboard({ cloud = null, initialData = null }) {
             <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importData(f); e.target.value = ''; }} />
           </div>
         </div>
-        <nav className="mx-auto flex max-w-[1440px] gap-1 overflow-x-auto px-4 sm:px-6" aria-label="Sections">
+        <nav className="mx-auto grid max-w-[1440px] grid-cols-3 gap-1 px-4 pb-2 sm:flex sm:overflow-x-auto sm:px-6 sm:pb-0" aria-label="Sections">
           {tabs.map((t) => (
             <button key={t.k} onClick={() => setTab(t.k)} aria-current={tab === t.k ? 'page' : undefined}
-              className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium transition ${tab === t.k ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
-              <t.icon className="h-4 w-4" aria-hidden="true" />{t.label}
+              className={`flex min-w-0 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium transition sm:shrink-0 sm:justify-start sm:rounded-none sm:border-b-2 sm:px-3 sm:py-2.5 sm:text-sm ${tab === t.k ? 'bg-indigo-50 text-indigo-700 sm:border-indigo-600 sm:bg-transparent' : 'bg-slate-50 text-slate-600 hover:text-slate-800 sm:border-transparent sm:bg-transparent'}`}>
+              <t.icon className="h-4 w-4 shrink-0" aria-hidden="true" /><span className="truncate sm:hidden">{t.short || t.label}</span><span className="hidden sm:inline">{t.label}</span>
             </button>
           ))}
         </nav>
       </header>
 
       {/* Date filter */}
-      <div className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-3 px-4 py-2.5 sm:px-6">
+      <div className="z-30 border-b border-slate-200 bg-white/90 backdrop-blur sm:sticky sm:top-0">
+        <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-2 px-4 py-2.5 sm:gap-3 sm:px-6">
           <div className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1" role="group" aria-label="Date presets">
             {PRESETS.map((p) => (
               <button key={p.k} aria-pressed={preset === p.k} onClick={() => { if (p.k === 'custom') setCustom({ ...range }); setPreset(p.k); }}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${preset === p.k ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>{p.label}</button>
+                className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition sm:px-3 ${preset === p.k ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>{p.label}</button>
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -2031,7 +2063,7 @@ function Dashboard({ cloud = null, initialData = null }) {
             <input type="date" aria-label="Start date" value={range.start} max={range.end} onChange={(e) => setRangeField('start', e.target.value)} className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none" />
             <span className="text-slate-400">to</span>
             <input type="date" aria-label="End date" value={range.end} min={range.start} onChange={(e) => setRangeField('end', e.target.value)} className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none" />
-            <span className="rounded-md bg-slate-100 px-2 py-1 text-slate-600">{days} day{days === 1 ? '' : 's'}</span>
+            <span className="hidden rounded-md bg-slate-100 px-2 py-1 text-slate-600 sm:inline">{days} day{days === 1 ? '' : 's'}</span>
           </div>
         </div>
       </div>
@@ -2153,8 +2185,8 @@ function Dashboard({ cloud = null, initialData = null }) {
                   </div>
                 ))}
               </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-100">
+              <div className="relative overflow-x-auto">
+                <table className="rt min-w-full divide-y divide-slate-100">
                   <thead className="bg-slate-50/70"><tr>
                     <Th>Date made</Th><Th>Run</Th><Th>Plate</Th><Th right>Plates made</Th><Th right>Cost / plate</Th><Th right>Sold from it</Th><Th>Ready left</Th><Th>Note</Th><Th right><span className="sr-only">Actions</span></Th>
                   </tr></thead>
@@ -2181,8 +2213,8 @@ function Dashboard({ cloud = null, initialData = null }) {
               </div>
             </Card>
             <Card title="Purchase History" icon={Package} bodyClass="p-0" subtitle="Every purchase at the price paid. Stock is used oldest batch first.">
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-100">
+              <div className="relative overflow-x-auto">
+                <table className="rt min-w-full divide-y divide-slate-100">
                   <thead className="bg-slate-50/70"><tr>
                     <Th>Date</Th><Th>Batch</Th><Th>Material</Th><Th>Supplier</Th><Th right>Qty bought</Th><Th right>Price / unit</Th><Th right>Total paid</Th><Th>Left in stock</Th><Th>Payment</Th><Th right><span className="sr-only">Actions</span></Th>
                   </tr></thead>
@@ -2236,8 +2268,8 @@ function Dashboard({ cloud = null, initialData = null }) {
                 </select>
                 <button className={btn.emerald} onClick={() => setModal({ kind: 'order' })}><Phone className="h-4 w-4" />New Order</button>
               </>}>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-100">
+              <div className="relative overflow-x-auto">
+                <table className="rt min-w-full divide-y divide-slate-100">
                   <thead className="bg-slate-50/70"><tr>
                     <Th>Date</Th><Th>Order</Th><Th>Customer</Th><Th>Plate</Th><Th>Leaf from</Th><Th right>Qty</Th><Th right>Price</Th><Th right>Cost / plate</Th><Th right>Sales</Th><Th right>Profit</Th><Th>Payment</Th><Th right><span className="sr-only">Actions</span></Th>
                   </tr></thead>
@@ -2338,8 +2370,8 @@ function Dashboard({ cloud = null, initialData = null }) {
             <Card title="Investments & Expenses" icon={Wrench} bodyClass="p-0"
               subtitle="Machinery is recovered over time. Labour, transport and other costs are taken off profit when paid. Raw material is under Stock."
               actions={<button className={btn.primary} onClick={() => setModal({ kind: 'expense' })}><Plus className="h-4 w-4" />Add Investment</button>}>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-100">
+              <div className="relative overflow-x-auto">
+                <table className="rt min-w-full divide-y divide-slate-100">
                   <thead className="bg-slate-50/70"><tr><Th>Date</Th><Th>ID</Th><Th>Type</Th><Th>Description</Th><Th>Paid to</Th><Th right>Amount</Th><Th>Payment</Th><Th right><span className="sr-only">Actions</span></Th></tr></thead>
                   <tbody className="divide-y divide-slate-100">
                     {expenseRows.length === 0 && <tr><td colSpan={8} className="px-3 py-8 text-center text-sm text-slate-500">Nothing yet — click Add Investment.</td></tr>}
