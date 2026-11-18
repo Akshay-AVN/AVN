@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>AVN EcoPlates</title>
-  <!-- Installable app: "Add to Home Screen" on iPhone / "Install app" on Android -->
+  <!-- Built file — made by build/build.mjs from AVNEcoPlatesDashboard.jsx. Upload this whole folder to GitHub. -->
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#059669" />
   <link rel="icon" type="image/png" href="favicon-32.png" />
@@ -13,33 +13,14 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="AVN Plates" />
-  <!-- AVN EcoPlates: loads React, Recharts, lucide-react & Tailwind from CDNs and
-       compiles AVNEcoPlatesDashboard.jsx in the browser. Serve this folder over HTTP
-       (GitHub Pages works as-is). Keep this file next to AVNEcoPlatesDashboard.jsx. -->
-  <script src="https://cdn.tailwindcss.com/3.4.5"></script>
-  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
-  <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
-  <script>window.react = window.React; /* lucide UMD reads a lowercase global */</script>
-  <script src="https://unpkg.com/lucide-react@0.383.0/dist/umd/lucide-react.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"></script>
-  <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
-  <style>body { background: #f8fafc; margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }</style>
+  <link rel="stylesheet" href="app.css?v=076d264395" />
+  <script defer src="app.js?v=03aa83214f"></script>
 </head>
 <body>
   <div id="root"><div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#64748b;font-size:14px"><img src="apple-touch-icon.png" alt="" width="64" height="64" style="border-radius:16px" />Loading AVN EcoPlates…</div></div>
   <script>
-    const GLOBALS = { react: 'React', recharts: 'Recharts', 'lucide-react': 'LucideReact', '@supabase/supabase-js': 'supabase' };
-    fetch('./AVNEcoPlatesDashboard.jsx', { cache: 'no-cache' }).then((r) => r.text()).then((src) => {
-      const code = src
-        .replace(/import\s+React\s*,\s*\{([\s\S]*?)\}\s*from\s*['"]react['"];?/g, 'const {$1} = React;')
-        .replace(/import\s*\{([\s\S]*?)\}\s*from\s*['"]([^'"]+)['"];?/g, (_, names, mod) => `const {${names}} = window.${GLOBALS[mod]};`)
-        .replace('export default function', 'function');
-      const out = Babel.transform(code + '\nReactDOM.createRoot(document.getElementById("root")).render(React.createElement(AVNEcoPlatesDashboard));', { presets: ['react'] }).code;
-      new Function(out)();
-    }).catch((e) => { document.getElementById('root').textContent = 'Preview failed: ' + e.message; console.error(e); });
-    if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+    window.addEventListener('error', function (e) { var r = document.getElementById('root'); if (r && !r.dataset.started && /app\.js/.test(e.filename || '')) r.textContent = 'Could not start the app: ' + e.message; });
+    if ('serviceWorker' in navigator) window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
   </script>
 </body>
 </html>
