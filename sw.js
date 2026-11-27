@@ -2,7 +2,7 @@
 // Your own files (the dashboard) always try the network first, so uploads to GitHub show up straight away.
 // Libraries from CDNs have fixed versions, so they're kept after the first download.
 // Supabase (your data) is never cached here — it always goes straight to the database.
-const CACHE = 'avn-app-f9bac9115c';
+const CACHE = 'avn-app-2be0535a86';
 const CDN = ['unpkg.com', 'cdn.jsdelivr.net', 'cdn.tailwindcss.com'];
 
 self.addEventListener('install', () => self.skipWaiting());
